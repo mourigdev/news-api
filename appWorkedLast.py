@@ -10,6 +10,8 @@ from flask_caching import Cache
 app = Flask(__name__)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
+MAX_CONNECTIONS = 5
+
 class TrendReqPool:
     def __init__(self):
         self.connection_pool = []
@@ -24,19 +26,41 @@ class TrendReqPool:
     def return_connection(self, pytrends):
         self.connection_pool.append(pytrends)
 
+trendreq_pool = TrendReqPool()
+
 def extract_arrays(list_of_items):
-    new_list = []
-    for item in list_of_items:
-        if isinstance(item, list):
-            new_list.extend(item)
-        elif "," not in item:
-            new_list.append(item)
-    return new_list
+  """Extracts the arrays and their values from a list and returns a new list with the arrays as separate items.
+
+  Args:
+    list_of_items: A list of items, some of which are arrays.
+
+  Returns:
+    A new list with the arrays as separate items.
+  """
+
+  new_list = []
+  for item in list_of_items:
+    if isinstance(item, list):
+      new_list.extend(item)
+    elif "," not in item:
+      new_list.append(item)
+
+  return new_list
 
 def remove_non_english(data):
-    non_english_regex = re.compile(r'[^\x00-\x7F]')
-    modified_data = non_english_regex.sub('', data)
-    return modified_data
+  """Removes all non-English characters from a string.
+
+  Args:
+    data: The string to be modified.
+
+  Returns:
+    The modified string.
+  """
+
+  non_english_regex = re.compile(r'[^\x00-\x7F]')
+  modified_data = non_english_regex.sub('', data)
+  return modified_data
+
 
 @cache.memoize(timeout=60*60)  # Cache the response for 1 hour
 def fetch_suggestions(keyword, pytrends):
@@ -44,9 +68,9 @@ def fetch_suggestions(keyword, pytrends):
 
 @app.route('/', methods=['GET'])
 def get_search_trends():
-    pytrends_pool = TrendReqPool()
+    pytrends_pool = trendreq_pool
 
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=MAX_CONNECTIONS) as executor:
         pytrends = pytrends_pool.get_connection()
 
         trending_searches_df = pytrends.trending_searches(pn='united_states')
